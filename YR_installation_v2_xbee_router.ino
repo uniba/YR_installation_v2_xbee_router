@@ -1,71 +1,61 @@
 #include <XBee.h>
 #include <Tlc5940.h>
 
+#define LIGHTS_MAX 16
+
 XBee xbee = XBee();
-XBeeResponse xbRes = XBeeResponse();
-ZBRxResponse zbRx = ZBRxResponse();
+ZBRxResponse zbRes = ZBRxResponse();
 
-uint16_t tlcValues[NUM_TLCS * 16];
+bool flag = true;
+int powerLed = 4;
 
-const int START_BYTES[] = { 0x22, 0x75 };
-
-//-----------------------------------------------------------------
 void setup()
 {
+  delay(1000);
+  pinMode(powerLed, OUTPUT);
+  digitalWrite(powerLed, HIGH);
+
   xbee.begin(115200);
-  
-  for (int i = 0; i < sizeof(tlcValues); ++i)
-  {
-    tlcValues[i] = 0;
-  }
-  
+
   Tlc.init();
 }
 
-//-----------------------------------------------------------------
 void loop()
 {
+  Tlc.clear();
   xbee.readPacket();
-  if (xbee.getResponse().isAvailable())
-  {
-    digitalWrite(7, HIGH);
-    xbee.getResponse().getZBRxResponse(zbRx);
-    
-    if (ZB_RX_RESPONSE == xbee.getResponse().getApiId())
+
+  if (xbee.getResponse().isAvailable()) {
+    if (xbee.getResponse().getApiId() == ZB_RX_RESPONSE)
     {
-      xbee.getResponse().getZBRxResponse(zbRx);
-      if (START_BYTES[0] == zbRx.getData(0) && START_BYTES[1] == zbRx.getData(1))
-      {
-        int index = zbRx.getData(2);
-        
-        tlcValues[index] = 4095;
+      xbee.getResponse().getZBRxResponse(zbRes);
+      uint8_t devices = zbRes.getData(3);
+      uint16_t targets = (zbRes.getData(4) << 8) + zbRes.getData(5);
+      uint16_t volume = (zbRes.getData(6) << 8) + zbRes.getData(7);
+      uint16_t time = (zbRes.getData(8) << 8) + zbRes.getData(9);
+
+      for (int i = 0; i < LIGHTS_MAX; i++) {
+        if ((targets & (1 << i)) != 0) Tlc.set(i, volume);
       }
-      else
-      {
-        
-      }
+
+      Tlc.update();
+      delay(time);
     }
   }
-  
-  Tlc.clear();
-  for (int i = 0; i < NUM_TLCS * 16; ++i)
-  {
-    Tlc.set(i, tlcValues[i]);
-  }
+
   Tlc.update();
-  delay(75);
+  delay(10);
 }
 
-//-----------------------------------------------------------------
-void writeTlcPin()
+void debug(uint8_t tgt)
 {
-  int pinNum = zbRx.getData(2);
-  uint16_t value = decodeBytes((int[]){ zbRx.getData(3), zbRx.getData(4), zbRx.getData(5), zbRx.getData(6) });
-  tlcValues[pinNum] = value;
-}
-
-//-----------------------------------------------------------------
-uint16_t decodeBytes(int bytes[])
-{
-  return (uint16_t)(bytes[0] << 24 | bytes[1] << 16 | bytes[2] << 8 | bytes[3]);
+  for (int i = 0; i / 2 < tgt / 16; i++) {
+    if (i % 2 == 0) {
+      Tlc.set(tgt % 16, 4095);
+    } else {
+      Tlc.set(tgt % 16, 512);
+    }
+    Tlc.update();
+    delay(500);
+  }
 }
