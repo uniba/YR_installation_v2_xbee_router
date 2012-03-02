@@ -25,12 +25,12 @@
 #include <XBee.h>
 #include <Tlc5940.h>
 #include <tlc_fades.h>
-#include "Tlc5940fader.h"
 
 #define LIGHTS_MAX 16
 
 XBee xbee = XBee();
 ZBRxResponse zbRes = ZBRxResponse();
+XBeeAddress64 remoteAddress = XBeeAddress64(0x0013a200, 0x40692d2f);
 
 TLC_CHANNEL_TYPE channel;
 
@@ -78,20 +78,28 @@ void loop()
       napIgnore = time;
 
       fadeAll(targets, 1 + volume / 4, time);
-
-      // TODO: send signal to cordinator
     }
   }
 
   // TODO: val が上下動するのでまるめる(中央値もしくは平均値)
+  // 現在は直前より400以上変動した時を拾っている
   val = analogRead(napion);
-
   if ((abs(prevVal - val) > 400) && (millis() - xbeeKick > napIgnore))  {
-    if (val > 400) {
+    if (val > prevVal) {
       fadeAll(65535, 1024, 1000);
     } else {
       fadeAll(65535, 1, 1000);
     }
+    uint8_t payload[2];
+    payload[0] = val >> 8;
+    payload[1] = val & 255;
+
+    ZBTxRequest zbTx = ZBTxRequest(remoteAddress, payload, sizeof(payload));
+    /* for Debuggin'
+    uint8_t text[] = {'H', 'e', 'l', 'l', 'o'};
+    ZBTxRequest zbTx = ZBTxRequest(remoteAddress, text, sizeof(text));
+    */
+    xbee.send(zbTx);
   }
 
   prevVal = val;
