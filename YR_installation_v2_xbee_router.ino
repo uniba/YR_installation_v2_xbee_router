@@ -25,6 +25,7 @@
 #include <XBee.h>
 #include <Tlc5940.h>
 #include <tlc_fades.h>
+#include "Tlc5940fader.h"
 
 #define LIGHTS_MAX 16
 
@@ -37,20 +38,21 @@ bool flag = true;
 int powerLed = 4;
 int napion = 0;
 int val = 0;
+int prevVal = 0;
 
-int debugSwitch = 2;
 bool fading = false;
 uint32_t start = 0;
+uint32_t xbeeKick = 0;
+uint32_t napIgnore = 0;
 
 void setup()
 {
   delay(1000);
   pinMode(powerLed, OUTPUT);
-  pinMode(debugSwitch, OUTPUT);
   digitalWrite(powerLed, HIGH);
 
-  //xbee.begin(115200);
-  Serial.begin(9600);
+  xbee.begin(115200);
+  //Serial.begin(9600);
 
   Tlc.init();
 }
@@ -58,7 +60,7 @@ void setup()
 void loop()
 {
   Tlc.clear();
-  /*
+
   xbee.readPacket();
 
   if (xbee.getResponse().isAvailable()) {
@@ -70,86 +72,47 @@ void loop()
       uint16_t volume = (zbRes.getData(6) << 8) + zbRes.getData(7);
       uint16_t time = (zbRes.getData(8) << 8) + zbRes.getData(9);
 
-      for (int i = 0; i < LIGHTS_MAX; i++) {
-        if ((targets & (1 << i)) != 0) Tlc.set(i, volume);
-      }
+      // Napion の信号を無視する時間をセット
+      //TODO : napion と 音楽の優先順位をコマンド切り替え可能にする
+      xbeeKick = millis();
+      napIgnore = time;
 
-      Tlc.update();
-      delay(time);
+      fadeAll(targets, 1 + volume / 4, time);
+
+      // TODO: send signal to cordinator
     }
   }
-  */
 
+  // TODO: val が上下動するのでまるめる(中央値もしくは平均値)
   val = analogRead(napion);
-  if ((val > 400) && !fading) {
-    fading = true;
-    start = millis();
-  } else {
-  }
 
-  if (fading) {
-    fadeIn(65535, 1024, 3000);
-  }
-
-  if (millis() - start > 3000) {
-    fading = false;
-  }
-
-  Serial.println(fading);
-  Serial.println(start);
-
-
-  digitalWrite(debugSwitch, LOW);
-  Tlc.update();
-  delay(10);
-}
-
-void fadeIn(uint16_t targets, uint16_t volume, uint16_t time)
-{
-  for (int i = 0; i < LIGHTS_MAX; i++) {
-    //if ((targets & (1 << i)) != 0) Tlc.set(i, volume);
-    if ((targets & (1 << i)) != 0) {
-      if (tlc_fadeBufferSize < TLC_FADE_BUFFER_LENGTH - 2) {
-        if (!tlc_isFading(channel)) {
-          uint32_t startMillis = millis() + 50;
-          uint32_t endMillis = startMillis + time / 2;
-          tlc_addFade(i, 0, volume, startMillis, endMillis);
-        }
-      }
-    }
-  }
-
-  tlc_updateFades();
-}
-
-void fadeInOut(uint16_t targets, uint16_t volume, uint16_t time)
-{
-  for (int i = 0; i < LIGHTS_MAX; i++) {
-    //if ((targets & (1 << i)) != 0) Tlc.set(i, volume);
-    if ((targets & (1 << i)) != 0) {
-      if (tlc_fadeBufferSize < TLC_FADE_BUFFER_LENGTH - 2) {
-        if (!tlc_isFading(channel)) {
-          uint32_t startMillis = millis() + 50;
-          uint32_t endMillis = startMillis + time / 2;
-          tlc_addFade(i, 0, volume, startMillis, endMillis);
-          tlc_addFade(i, volume, 0, endMillis, endMillis + time / 2);
-        }
-      }
-    }
-  }
-
-  tlc_updateFades();
-}
-
-void debug(uint8_t tgt)
-{
-  for (int i = 0; i / 2 < tgt / 16; i++) {
-    if (i % 2 == 0) {
-      Tlc.set(tgt % 16, 4095);
+  if ((abs(prevVal - val) > 400) && (millis() - xbeeKick > napIgnore))  {
+    if (val > 400) {
+      fadeAll(65535, 1024, 1000);
     } else {
-      Tlc.set(tgt % 16, 512);
+      fadeAll(65535, 1, 1000);
     }
-    Tlc.update();
-    delay(500);
+  }
+
+  prevVal = val;
+
+  tlc_updateFades(millis());
+}
+
+void fade(TLC_CHANNEL_TYPE channel, uint16_t current, uint16_t value, uint16_t time){
+    uint32_t startMillis = millis() + 50;
+    uint32_t endMillis = startMillis + time;
+
+    tlc_removeFades(channel);
+    if (current == value) {
+      Tlc.set(channel, value);
+    } else {
+      tlc_addFade(channel, current, value, startMillis, endMillis);
+    }
+}
+
+void fadeAll(uint16_t targets, uint16_t value, uint16_t time) {
+  for (int i = 0; i < LIGHTS_MAX; i++) {
+    if ((targets & (1 << i)) != 0) fade(i, tlc_getCurrentValue(i), value, time);
   }
 }
