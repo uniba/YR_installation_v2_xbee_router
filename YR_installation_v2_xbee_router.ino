@@ -88,7 +88,7 @@ void loop()
   }
 
   if (fading) {
-    fadeIn(1, 1024, 3000);
+    fadeIn(65535, 1024, 3000);
   }
 
   if (millis() - start > 3000) {
