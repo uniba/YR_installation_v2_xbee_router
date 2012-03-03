@@ -62,6 +62,7 @@ void loop()
   Tlc.clear();
 
   xbee.readPacket();
+  uint32_t loopStart = millis();
 
   if (xbee.getResponse().isAvailable()) {
     if (xbee.getResponse().getApiId() == ZB_RX_RESPONSE)
@@ -74,8 +75,8 @@ void loop()
 
       // Napion の信号を無視する時間をセット
       //TODO : napion と 音楽の優先順位をコマンド切り替え可能にする
-      xbeeKick = millis();
-      napIgnore = time;
+      xbeeKick = loopStart;
+      napIgnore = time + 500;
 
       fadeAll(targets, 1 + volume / 4, time);
     }
@@ -84,12 +85,13 @@ void loop()
   // TODO: val が上下動するのでまるめる(中央値もしくは平均値)
   // 現在は直前より400以上変動した時を拾っている
   val = analogRead(napion);
-  if ((abs(prevVal - val) > 400) && (millis() - xbeeKick > napIgnore))  {
+  if ((abs(prevVal - val) > 400) && (loopStart - xbeeKick > napIgnore))  {
     if (val > prevVal) {
-      fadeAll(65535, 1024, 1000);
-    } else {
-      fadeAll(65535, 1, 1000);
-    }
+      fadeAll(65535, 1024, 3000);
+    }/* else {
+      fadeAll(65535, 1, 3000);
+    }*/
+
     uint8_t payload[2];
     payload[0] = val >> 8;
     payload[1] = val & 255;
@@ -100,11 +102,11 @@ void loop()
     ZBTxRequest zbTx = ZBTxRequest(remoteAddress, text, sizeof(text));
     */
     xbee.send(zbTx);
+    delay(10);
   }
-
   prevVal = val;
 
-  tlc_updateFades(millis());
+  tlc_updateFades(loopStart);
 }
 
 void fade(TLC_CHANNEL_TYPE channel, uint16_t current, uint16_t value, uint16_t time){
@@ -112,9 +114,7 @@ void fade(TLC_CHANNEL_TYPE channel, uint16_t current, uint16_t value, uint16_t t
     uint32_t endMillis = startMillis + time;
 
     tlc_removeFades(channel);
-    if (current == value) {
-      Tlc.set(channel, value);
-    } else {
+    if (current != value) {
       tlc_addFade(channel, current, value, startMillis, endMillis);
     }
 }
