@@ -78,7 +78,7 @@ void loop()
       xbeeKick = loopStart;
       napIgnore = time + 500;
 
-      fadeAll(targets, 1 + volume / 4, time);
+      fadeAll(targets, volume, time);
     }
   }
 
@@ -114,13 +114,15 @@ void fade(TLC_CHANNEL_TYPE channel, uint16_t current, uint16_t value, uint16_t t
     uint32_t endMillis = startMillis + time;
 
     tlc_removeFades(channel);
-    if (current != value) {
-      tlc_addFade(channel, current, value, startMillis, endMillis);
-    }
+    tlc_addFade(channel, current, value, startMillis, endMillis);
 }
 
 void fadeAll(uint16_t targets, uint16_t value, uint16_t time) {
   for (int i = 0; i < LIGHTS_MAX; i++) {
-    if ((targets & (1 << i)) != 0) fade(i, tlc_getCurrentValue(i), value, time);
+    if ((targets & (1 << i)) != 0) {
+      fade(i, tlc_getCurrentValue(i), value, time);
+    } else {
+      fade(i, tlc_getCurrentValue(i), tlc_getCurrentValue(i), time);
+    }
   }
 }
