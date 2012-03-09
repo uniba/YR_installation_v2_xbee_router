@@ -75,7 +75,7 @@ void loop()
       uint16_t time = (zbRes.getData(8) << 8) + zbRes.getData(9);
       */
       uint8_t devices = zbRes.getData(5);
-      uint16_t targets = (zbRes.getData(8) << 8) + zbRes.getData(9);
+      uint32_t targets = (zbRes.getData(6) << 24) + (zbRes.getData(7) << 16) + (zbRes.getData(8) << 8) + zbRes.getData(9);
       uint16_t volume = (zbRes.getData(10) << 8) + zbRes.getData(11);
       uint16_t time = (zbRes.getData(12) << 8) + zbRes.getData(13);
       
