@@ -75,9 +75,10 @@ void loop()
       uint16_t time = (zbRes.getData(8) << 8) + zbRes.getData(9);
       */
       uint8_t devices = zbRes.getData(5);
-      uint32_t targets = (zbRes.getData(6) << 24) + (zbRes.getData(7) << 16) + (zbRes.getData(8) << 8) + zbRes.getData(9);
-      uint16_t volume = (zbRes.getData(10) << 8) + zbRes.getData(11);
-      uint16_t time = (zbRes.getData(12) << 8) + zbRes.getData(13);
+      uint32_t target1 = (zbRes.getData(6) << 24) + (zbRes.getData(7) << 16) + (zbRes.getData(8) << 8) + zbRes.getData(9);
+      uint32_t target2 = (zbRes.getData(10) << 24) + (zbRes.getData(11) << 16) + (zbRes.getData(12) << 8) + zbRes.getData(13);
+      uint16_t volume = (zbRes.getData(14) << 8) + zbRes.getData(15);
+      uint16_t time = (zbRes.getData(16) << 8) + zbRes.getData(17);
       
 
       // Napion の信号を無視する時間をセット
@@ -85,13 +86,14 @@ void loop()
       xbeeKick = loopStart;
       napIgnore = time + 500;
 
-      fadeAll(targets, volume, time);
+      fadeAll(target1, target2, volume, time);
     }
   }
 
   
 
   tlc_updateFades(loopStart);
+  delay(20);
 }
 
 void fade(TLC_CHANNEL_TYPE channel, uint16_t current, uint16_t value, uint16_t time){
@@ -102,12 +104,20 @@ void fade(TLC_CHANNEL_TYPE channel, uint16_t current, uint16_t value, uint16_t t
     tlc_addFade(channel, current, value, startMillis, endMillis);
 }
 
-void fadeAll(uint32_t targets, uint16_t value, uint16_t time) {
+void fadeAll(uint32_t target1, uint32_t target2, uint16_t value, uint16_t time) {
+  int offset = 16;
   for (int i = 0; i < LIGHTS_MAX; i++) {
-    if ((targets & (1 << i)) != 0) {
+    if ((target1 & (1 << i)) != 0) {
       fade(i, tlc_getCurrentValue(i), value, time);
     } else {
       fade(i, tlc_getCurrentValue(i), tlc_getCurrentValue(i), time);
+    }
+    
+    int index = offset + i;
+    if ((target2 & (1 << i)) != 0) {
+      fade(index, tlc_getCurrentValue(index), value, time);
+    } else {
+      fade(index, tlc_getCurrentValue(index), tlc_getCurrentValue(index), time);
     }
   }
 }
