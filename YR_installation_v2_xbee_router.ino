@@ -30,11 +30,19 @@
 
 XBee xbee = XBee();
 ZBRxResponse zbRes = ZBRxResponse();
-XBeeAddress64 remoteAddress = XBeeAddress64(0x0013a200, 0x40692d2f);
 
 TLC_CHANNEL_TYPE channel;
 
+int startBytesForModeA[] = { 0x22, 0x75 };
+int startBytesForModeB[] = { 0x22, 0x76 };
+int startBytesForModeC[] = { 0x22, 0x77 };
+int startBytesForModeD[] = { 0x22, 0x78 };
+int startBytesForModeE[] = { 0x22, 0x79 };
+
 bool flag = true;
+bool isAutoFadeInOutEnabled = true;
+bool fadeInOutAuto = true;
+uint16_t fadeInOutTime = 5000;
 int powerLed = 4;
 int napion = 0;
 int val = 0;
@@ -54,7 +62,7 @@ void setup()
   xbee.begin(115200);
   //Serial.begin(9600);
 
-  Tlc.init();
+  Tlc.init(0);
 }
 
 void loop()
@@ -65,34 +73,53 @@ void loop()
   uint32_t loopStart = millis();
 
   if (xbee.getResponse().isAvailable()) {
-    if (xbee.getResponse().getApiId() == ZB_RX_RESPONSE)
-    {
+    if (xbee.getResponse().getApiId() == ZB_RX_RESPONSE) {
       xbee.getResponse().getZBRxResponse(zbRes);
-      /*
-      uint8_t devices = zbRes.getData(3);
-      uint16_t targets = (zbRes.getData(4) << 8) + zbRes.getData(5);
-      uint16_t volume = (zbRes.getData(6) << 8) + zbRes.getData(7);
-      uint16_t time = (zbRes.getData(8) << 8) + zbRes.getData(9);
-      */
-      uint8_t devices = zbRes.getData(5);
-      uint32_t target1 = (zbRes.getData(6) << 24) + (zbRes.getData(7) << 16) + (zbRes.getData(8) << 8) + zbRes.getData(9);
-      uint32_t target2 = (zbRes.getData(10) << 24) + (zbRes.getData(11) << 16) + (zbRes.getData(12) << 8) + zbRes.getData(13);
+      int startBytesInReceivedData[] = { zbRes.getData(0), zbRes.getData(1) };
       uint16_t volume = (zbRes.getData(14) << 8) + zbRes.getData(15);
       uint16_t time = (zbRes.getData(16) << 8) + zbRes.getData(17);
-      
-
-      // Napion の信号を無視する時間をセット
-      //TODO : napion と 音楽の優先順位をコマンド切り替え可能にする
-      xbeeKick = loopStart;
-      napIgnore = time + 500;
-
-      fadeAll(target1, target2, volume, time);
+      if (startBytesForModeA[0] == startBytesInReceivedData[0] && startBytesForModeA[1] == startBytesInReceivedData[1]) {
+        isAutoFadeInOutEnabled = false;
+        
+        uint8_t devices = zbRes.getData(5);
+        uint32_t target1 = (zbRes.getData(6) << 24) + (zbRes.getData(7) << 16) + (zbRes.getData(8) << 8) + zbRes.getData(9);
+        uint32_t target2 = (zbRes.getData(10) << 24) + (zbRes.getData(11) << 16) + (zbRes.getData(12) << 8) + zbRes.getData(13);
+        fadeAll(target1, target2, volume, time);
+      } else if (startBytesForModeB[0] == startBytesInReceivedData[0] && startBytesForModeB[1] == startBytesInReceivedData[1]) {
+        isAutoFadeInOutEnabled = false;
+        
+        flickAndFadeOutAll(volume, time);
+      } else if (startBytesForModeC[0] == startBytesInReceivedData[0] && startBytesForModeC[1] == startBytesInReceivedData[1]) {
+        isAutoFadeInOutEnabled = true;
+        fadeInOutTime = time;
+      } else if (startBytesForModeD[0] == startBytesInReceivedData[0] && startBytesForModeD[1] == startBytesInReceivedData[1]) {
+        isAutoFadeInOutEnabled = false;
+      } else if (startBytesForModeE[0] == startBytesInReceivedData[0] && startBytesForModeE[1] == startBytesInReceivedData[1]) {
+        isAutoFadeInOutEnabled = false;
+      }
+    }
+  } else {
+    if (isAutoFadeInOutEnabled) {
+      if (fadeInOutAuto) {
+        //fadeInOutAuto = false;
+        if (0 == tlc_getCurrentValue(0)) {
+          fadeInToMaxAll(fadeInOutTime);
+          fadeInOutAuto = false;
+        }
+      } else {
+        if (2048 < tlc_getCurrentValue(0)) {
+          fadeOutToMinAll(fadeInOutTime);
+          fadeInOutAuto = true;
+        }
+      }
     }
   }
 
   
 
   tlc_updateFades(loopStart);
+  zbRes.init();
+  Serial.flush();
   delay(20);
 }
 
@@ -104,9 +131,17 @@ void fade(TLC_CHANNEL_TYPE channel, uint16_t current, uint16_t value, uint16_t t
     tlc_addFade(channel, current, value, startMillis, endMillis);
 }
 
+void fade(TLC_CHANNEL_TYPE channel, uint16_t current, uint16_t value, uint16_t time, uint16_t delay){
+    uint32_t startMillis = millis() + delay;
+    uint32_t endMillis = startMillis + time;
+
+    tlc_removeFades(channel);
+    tlc_addFade(channel, current, value, startMillis, endMillis);
+}
+
 void fadeAll(uint32_t target1, uint32_t target2, uint16_t value, uint16_t time) {
   int offset = 16;
-  for (int i = 0; i < LIGHTS_MAX; i++) {
+  for (int i = 0; i < LIGHTS_MAX; ++i) {
     if ((target1 & (1 << i)) != 0) {
       fade(i, tlc_getCurrentValue(i), value, time);
     } else {
@@ -119,5 +154,34 @@ void fadeAll(uint32_t target1, uint32_t target2, uint16_t value, uint16_t time) 
     } else {
       fade(index, tlc_getCurrentValue(index), tlc_getCurrentValue(index), time);
     }
+  }
+}
+
+void flickAndFadeOutAll(uint32_t value, uint16_t time)
+{
+  for (int i = 0; i < LIGHTS_MAX; ++i) {
+    fade(i, value, 0, time);
+  }
+}
+
+void fadeInToMaxAll(uint16_t time)
+{
+  int offset = 16;
+  for (int i = 0; i < LIGHTS_MAX; ++i) {
+    fade(i, tlc_getCurrentValue(i), 4095, time);
+    
+    int index = offset + i;
+    fade(index, tlc_getCurrentValue(index), 4095, time);
+  }
+}
+
+void fadeOutToMinAll(uint16_t time)
+{
+  int offset = 16;
+  for (int i = 0; i < LIGHTS_MAX; ++i) {
+    fade(i, tlc_getCurrentValue(i), 0, time);
+    
+    int index = offset + i;
+    fade(index, tlc_getCurrentValue(index), 0, time);
   }
 }
