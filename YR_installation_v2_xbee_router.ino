@@ -41,8 +41,11 @@ int startBytesForModeE[] = { 0x22, 0x79 };
 
 bool flag = true;
 bool isAutoFadeInOutEnabled = true;
+bool isRandomFadeInOutEnabled = false;
 bool fadeInOutAuto = true;
-uint16_t fadeInOutTime = 5000;
+uint16_t autoFadeInOutValueMax = 4095;
+uint16_t autoFadeInOutTime = 5000;
+
 int powerLed = 4;
 int napion = 0;
 int val = 0;
@@ -91,9 +94,14 @@ void loop()
         flickAndFadeOutAll(volume, time);
       } else if (startBytesForModeC[0] == startBytesInReceivedData[0] && startBytesForModeC[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = true;
-        fadeInOutTime = time;
+        
+        autoFadeInOutValueMax = volume;
+        autoFadeInOutTime = time;
       } else if (startBytesForModeD[0] == startBytesInReceivedData[0] && startBytesForModeD[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = false;
+        
+        autoFadeInOutValueMax = volume;
+        autoFadeInOutTime = time;
       } else if (startBytesForModeE[0] == startBytesInReceivedData[0] && startBytesForModeE[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = false;
       }
@@ -103,12 +111,12 @@ void loop()
       if (fadeInOutAuto) {
         //fadeInOutAuto = false;
         if (0 == tlc_getCurrentValue(0)) {
-          fadeInToMaxAll(fadeInOutTime);
+          fadeInToMaxAll(autoFadeInOutValueMax, autoFadeInOutTime);
           fadeInOutAuto = false;
         }
       } else {
-        if (2048 < tlc_getCurrentValue(0)) {
-          fadeOutToMinAll(fadeInOutTime);
+        if (autoFadeInOutValueMax <= tlc_getCurrentValue(0)) {
+          fadeOutToMinAll(autoFadeInOutTime);
           fadeInOutAuto = true;
         }
       }
@@ -159,29 +167,36 @@ void fadeAll(uint32_t target1, uint32_t target2, uint16_t value, uint16_t time) 
 
 void flickAndFadeOutAll(uint32_t value, uint16_t time)
 {
-  for (int i = 0; i < LIGHTS_MAX; ++i) {
+  for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
     fade(i, value, 0, time);
   }
 }
 
-void fadeInToMaxAll(uint16_t time)
+void fadeInToMaxAll(uint16_t value, uint16_t time)
 {
-  int offset = 16;
-  for (int i = 0; i < LIGHTS_MAX; ++i) {
-    fade(i, tlc_getCurrentValue(i), 4095, time);
-    
-    int index = offset + i;
-    fade(index, tlc_getCurrentValue(index), 4095, time);
+
+  for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
+    fade(i, tlc_getCurrentValue(i), value, time);
   }
 }
 
 void fadeOutToMinAll(uint16_t time)
 {
-  int offset = 16;
-  for (int i = 0; i < LIGHTS_MAX; ++i) {
+  for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
     fade(i, tlc_getCurrentValue(i), 0, time);
-    
-    int index = offset + i;
-    fade(index, tlc_getCurrentValue(index), 0, time);
+  }
+}
+
+void fadeInToMaxAllByRandomDuration(uint16_t value, uint16_t time)
+{
+  for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
+    fade(i, tlc_getCurrentValue(i), value, 50 + random(time));
+  }
+}
+
+void fadeOutToMinAllByRandomDuration(uint16_t time)
+{
+  for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
+    fade(i, tlc_getCurrentValue(i), 0, 50 + random(time));
   }
 }
