@@ -78,20 +78,23 @@ void loop()
   if (xbee.getResponse().isAvailable()) {
     if (xbee.getResponse().getApiId() == ZB_RX_RESPONSE) {
       xbee.getResponse().getZBRxResponse(zbRes);
+      
       int startBytesInReceivedData[] = { zbRes.getData(0), zbRes.getData(1) };
+      uint8_t devices = zbRes.getData(5);
+      uint32_t target1 = (zbRes.getData(6) << 24) + (zbRes.getData(7) << 16) + (zbRes.getData(8) << 8) + zbRes.getData(9);
+      uint32_t target2 = (zbRes.getData(10) << 24) + (zbRes.getData(11) << 16) + (zbRes.getData(12) << 8) + zbRes.getData(13);
       uint16_t volume = (zbRes.getData(14) << 8) + zbRes.getData(15);
       uint16_t time = (zbRes.getData(16) << 8) + zbRes.getData(17);
+      
       if (startBytesForModeA[0] == startBytesInReceivedData[0] && startBytesForModeA[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = false;
         
-        uint8_t devices = zbRes.getData(5);
-        uint32_t target1 = (zbRes.getData(6) << 24) + (zbRes.getData(7) << 16) + (zbRes.getData(8) << 8) + zbRes.getData(9);
-        uint32_t target2 = (zbRes.getData(10) << 24) + (zbRes.getData(11) << 16) + (zbRes.getData(12) << 8) + zbRes.getData(13);
         fadeAll(target1, target2, volume, time);
       } else if (startBytesForModeB[0] == startBytesInReceivedData[0] && startBytesForModeB[1] == startBytesInReceivedData[1]) {
+        // TODO:ピンを指定できるようにする
         isAutoFadeInOutEnabled = false;
         
-        flickAndFadeOutAll(volume, time);
+        flickAndFadeOutAll(target1, target2, volume, time);
       } else if (startBytesForModeC[0] == startBytesInReceivedData[0] && startBytesForModeC[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = true;
         
@@ -100,8 +103,7 @@ void loop()
       } else if (startBytesForModeD[0] == startBytesInReceivedData[0] && startBytesForModeD[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = false;
         
-        autoFadeInOutValueMax = volume;
-        autoFadeInOutTime = time;
+        randomFlickAndFadeOutAll(volume, time);
       } else if (startBytesForModeE[0] == startBytesInReceivedData[0] && startBytesForModeE[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = false;
       }
@@ -165,10 +167,22 @@ void fadeAll(uint32_t target1, uint32_t target2, uint16_t value, uint16_t time) 
   }
 }
 
-void flickAndFadeOutAll(uint32_t value, uint16_t time)
+void flickAndFadeOutAll(uint32_t target1, uint32_t target2, uint32_t value, uint16_t time)
+{
+  for (int i = 0; i < LIGHTS_MAX; ++i) {
+    if ((target1 & (1 << i)) != 0) {
+      fade(i, value, 0, time);
+    }
+    if ((target2 & (1 << i)) != 0) {
+      fade(LIGHTS_MAX + i, value, 0, time);
+    }
+  }
+}
+
+void randomFlickAndFadeOutAll(uint32_t value, uint16_t time)
 {
   for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
-    fade(i, value, 0, time);
+    fade(i, random(value), 0, time);
   }
 }
 
