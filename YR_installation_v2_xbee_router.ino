@@ -38,6 +38,7 @@ int startBytesForModeB[] = { 0x22, 0x76 };
 int startBytesForModeC[] = { 0x22, 0x77 };
 int startBytesForModeD[] = { 0x22, 0x78 };
 int startBytesForModeE[] = { 0x22, 0x79 };
+char currentCommand = 'c';
 
 bool flag = true;
 bool isAutoFadeInOutEnabled = true;
@@ -46,10 +47,7 @@ bool fadeInOutAuto = true;
 uint16_t autoFadeInOutValueMax = 4095;
 uint16_t autoFadeInOutTime = 5000;
 
-int powerLed = 4;
-int napion = 0;
-int val = 0;
-int prevVal = 0;
+int valuesForModeD[] = { 0, 2048 };
 
 bool fading = false;
 uint32_t start = 0;
@@ -59,12 +57,11 @@ uint32_t napIgnore = 0;
 void setup()
 {
   delay(1000);
-  pinMode(powerLed, OUTPUT);
-  digitalWrite(powerLed, HIGH);
 
   xbee.begin(115200);
-  //Serial.begin(9600);
-
+  
+  randomSeed(analogRead(0));
+  
   Tlc.init(0);
 }
 
@@ -88,28 +85,32 @@ void loop()
       
       if (startBytesForModeA[0] == startBytesInReceivedData[0] && startBytesForModeA[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = false;
-        
+        fadeInOutAuto = true;
+        currentCommand = 'a';
         fadeAll(target1, target2, volume, time);
       } else if (startBytesForModeB[0] == startBytesInReceivedData[0] && startBytesForModeB[1] == startBytesInReceivedData[1]) {
         // TODO:ピンを指定できるようにする
         isAutoFadeInOutEnabled = false;
-        
+        currentCommand = 'b';
         flickAndFadeOutAll(target1, target2, volume, time);
       } else if (startBytesForModeC[0] == startBytesInReceivedData[0] && startBytesForModeC[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = true;
-        
+        fadeInOutAuto = true;
+        currentCommand = 'c';
         autoFadeInOutValueMax = volume;
         autoFadeInOutTime = time;
       } else if (startBytesForModeD[0] == startBytesInReceivedData[0] && startBytesForModeD[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = false;
-        
-        randomFlickAndFadeOutAll(volume, time);
+        currentCommand = 'd';
+        fadeInOutAuto = false;
+        //randomFlickAndFadeOutAll(volume, time);
       } else if (startBytesForModeE[0] == startBytesInReceivedData[0] && startBytesForModeE[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = false;
+        fadeInOutAuto = true;
       }
     }
   } else {
-    if (isAutoFadeInOutEnabled) {
+    if ('c' == currentCommand && isAutoFadeInOutEnabled) {
       if (fadeInOutAuto) {
         //fadeInOutAuto = false;
         if (0 == tlc_getCurrentValue(0)) {
@@ -122,15 +123,26 @@ void loop()
           fadeInOutAuto = true;
         }
       }
+    } else if ('d' == currentCommand && !isAutoFadeInOutEnabled) {
+      setRandomAll();
+      
+//      for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
+//        if (tlc_isFading(i)) tlc_removeFades(i);
+//        Tlc.set(i, random(0, 2048));
+//      }
+//      Tlc.update();
     }
   }
 
-  
-
-  tlc_updateFades(loopStart);
   zbRes.init();
   Serial.flush();
-  delay(20);
+  
+  if ('d' != currentCommand) {
+    tlc_updateFades(loopStart);
+    delay(20);
+  } else {
+    delay(56);
+  }
 }
 
 void fade(TLC_CHANNEL_TYPE channel, uint16_t current, uint16_t value, uint16_t time){
@@ -213,4 +225,13 @@ void fadeOutToMinAllByRandomDuration(uint16_t time)
   for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
     fade(i, tlc_getCurrentValue(i), 0, 50 + random(time));
   }
+}
+
+void setRandomAll()
+{
+  for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
+    tlc_removeFades(i);
+    Tlc.set(i, valuesForModeD[random(2)]);
+  }
+  Tlc.update();
 }
