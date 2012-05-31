@@ -40,19 +40,19 @@ int startBytesForModeD[] = { 0x22, 0x78 };
 int startBytesForModeE[] = { 0x22, 0x79 };
 char currentCommand = 'c';
 
-bool flag = true;
 bool isAutoFadeInOutEnabled = true;
 bool isRandomFadeInOutEnabled = false;
 bool fadeInOutAuto = true;
-uint16_t autoFadeInOutValueMax = 4095;
-uint16_t autoFadeInOutTime = 5000;
+bool isHigh = false;
+bool isFadeInOutAuto[LIGHTS_MAX * NUM_TLCS];
+uint16_t autoFadeInOutValueMax = 64;
+uint16_t autoFadeInOutTime = 3000;
 
 int valuesForModeD[] = { 0, 2048 };
 
-bool fading = false;
-uint32_t start = 0;
-uint32_t xbeeKick = 0;
-uint32_t napIgnore = 0;
+uint32_t _target1 = 0;
+uint32_t _target2 = 0;
+
 
 void setup()
 {
@@ -63,6 +63,10 @@ void setup()
   randomSeed(analogRead(0));
   
   Tlc.init(0);
+  
+  for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
+          isFadeInOutAuto[i] = true;
+        }
 }
 
 void loop()
@@ -78,8 +82,8 @@ void loop()
       
       int startBytesInReceivedData[] = { zbRes.getData(0), zbRes.getData(1) };
       uint8_t devices = zbRes.getData(5);
-      uint32_t target1 = (zbRes.getData(6) << 24) + (zbRes.getData(7) << 16) + (zbRes.getData(8) << 8) + zbRes.getData(9);
-      uint32_t target2 = (zbRes.getData(10) << 24) + (zbRes.getData(11) << 16) + (zbRes.getData(12) << 8) + zbRes.getData(13);
+      _target1 = (zbRes.getData(6) << 24) + (zbRes.getData(7) << 16) + (zbRes.getData(8) << 8) + zbRes.getData(9);
+      _target2 = (zbRes.getData(10) << 24) + (zbRes.getData(11) << 16) + (zbRes.getData(12) << 8) + zbRes.getData(13);
       uint16_t volume = (zbRes.getData(14) << 8) + zbRes.getData(15);
       uint16_t time = (zbRes.getData(16) << 8) + zbRes.getData(17);
       
@@ -87,50 +91,60 @@ void loop()
         isAutoFadeInOutEnabled = false;
         fadeInOutAuto = true;
         currentCommand = 'a';
-        fadeAll(target1, target2, volume, time);
+        fadeAll(_target1, _target2, volume, time);
+        for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
+          isFadeInOutAuto[i] = true;
+        }
       } else if (startBytesForModeB[0] == startBytesInReceivedData[0] && startBytesForModeB[1] == startBytesInReceivedData[1]) {
         // TODO:ピンを指定できるようにする
         isAutoFadeInOutEnabled = false;
         currentCommand = 'b';
-        flickAndFadeOutAll(target1, target2, volume, time);
+        flickAndFadeOutAll(_target1, _target2, volume, time);
       } else if (startBytesForModeC[0] == startBytesInReceivedData[0] && startBytesForModeC[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = true;
         fadeInOutAuto = true;
         currentCommand = 'c';
         autoFadeInOutValueMax = volume;
         autoFadeInOutTime = time;
+        for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
+          isFadeInOutAuto[i] = true;
+        }
       } else if (startBytesForModeD[0] == startBytesInReceivedData[0] && startBytesForModeD[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = false;
         currentCommand = 'd';
         fadeInOutAuto = false;
-        //randomFlickAndFadeOutAll(volume, time);
+        for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
+          isFadeInOutAuto[i] = false;
+        }
+        //randomFlickAndFadeOutAll(target1, target2, volume, time);
       } else if (startBytesForModeE[0] == startBytesInReceivedData[0] && startBytesForModeE[1] == startBytesInReceivedData[1]) {
         isAutoFadeInOutEnabled = false;
-        fadeInOutAuto = true;
+        currentCommand = 'e';
+        fadeInOutAuto = false;
+        for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
+          isFadeInOutAuto[i] = false;
+        }
       }
     }
   } else {
     if ('c' == currentCommand && isAutoFadeInOutEnabled) {
-      if (fadeInOutAuto) {
-        //fadeInOutAuto = false;
-        if (0 == tlc_getCurrentValue(0)) {
-          fadeInToMaxAll(autoFadeInOutValueMax, autoFadeInOutTime);
-          fadeInOutAuto = false;
-        }
-      } else {
-        if (autoFadeInOutValueMax <= tlc_getCurrentValue(0)) {
-          fadeOutToMinAll(autoFadeInOutTime);
-          fadeInOutAuto = true;
+      for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
+        if (isFadeInOutAuto[i]) {
+          if (0 == tlc_getCurrentValue(i)) {
+            fade(i, tlc_getCurrentValue(i), autoFadeInOutValueMax, 1000 + random(autoFadeInOutTime));
+            isFadeInOutAuto[i] = false;
+          }
+        } else {
+          if (autoFadeInOutValueMax <= tlc_getCurrentValue(i)) {
+            fade(i, tlc_getCurrentValue(i), 0, 1000 + random(autoFadeInOutTime));
+            isFadeInOutAuto[i] = true;
+          }
         }
       }
     } else if ('d' == currentCommand && !isAutoFadeInOutEnabled) {
-      setRandomAll();
-      
-//      for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
-//        if (tlc_isFading(i)) tlc_removeFades(i);
-//        Tlc.set(i, random(0, 2048));
-//      }
-//      Tlc.update();
+      setRandomAll(_target1, _target2);
+    } else if ('e' == currentCommand && !isAutoFadeInOutEnabled) {
+      strobo();
     }
   }
 
@@ -140,8 +154,10 @@ void loop()
   if ('d' != currentCommand) {
     tlc_updateFades(loopStart);
     delay(20);
-  } else {
+  } else if ('d' == currentCommand) {
     delay(56);
+  } else if ('e' == currentCommand) {
+    delay(10);
   }
 }
 
@@ -191,10 +207,21 @@ void flickAndFadeOutAll(uint32_t target1, uint32_t target2, uint32_t value, uint
   }
 }
 
-void randomFlickAndFadeOutAll(uint32_t value, uint16_t time)
+void randomFlickAndFadeOutAll(uint32_t target1, uint32_t target2, uint32_t value, uint16_t time)
 {
-  for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
-    fade(i, random(value), 0, time);
+  for (int i = 0; i < LIGHTS_MAX; ++i) {
+    if (target1 & (1 << i) != 0) {
+      fade(i, random(value), 0, time);
+    } else {
+      fade(i, tlc_getCurrentValue(i), tlc_getCurrentValue(i), time);
+    }
+    
+    int index = LIGHTS_MAX + i;
+    if (target2 & (1 << i) != 0) {
+      fade(index, random(value), 0, time);
+    } else {
+      fade(i, tlc_getCurrentValue(index), tlc_getCurrentValue(index), time);
+    }
   }
 }
 
@@ -227,11 +254,33 @@ void fadeOutToMinAllByRandomDuration(uint16_t time)
   }
 }
 
-void setRandomAll()
+void setRandomAll(uint32_t target1, uint32_t target2)
+{
+  for (int i = 0; i < LIGHTS_MAX; ++i) {
+    if (target1 & (1 << i) != 0) {
+      tlc_removeFades(i);
+      Tlc.set(i, valuesForModeD[random(2)]);
+    }
+    
+    int index = LIGHTS_MAX + i;
+    if (target2 & (1 << 0) != 0) {
+      tlc_removeFades(index);
+      Tlc.set(index, valuesForModeD[random(2)]);
+    }
+  }
+  Tlc.update();
+}
+
+void strobo()
 {
   for (int i = 0; i < LIGHTS_MAX * NUM_TLCS; ++i) {
     tlc_removeFades(i);
-    Tlc.set(i, valuesForModeD[random(2)]);
+    if (!isHigh) {
+      Tlc.set(i, 4095);
+      isHigh = true;
+    } else {
+      Tlc.set(i, 0);
+    }
   }
   Tlc.update();
 }
